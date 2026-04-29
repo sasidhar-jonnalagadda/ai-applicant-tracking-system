@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build, Lint & Typecheck
+    runs-on: ubuntu-latest
+
+    env:
+      # Dummy env vars required for env validation during build [R-7]
+      GEMINI_API_KEY: "ci_dummy_key"
+      MONGODB_URI: "mongodb://localhost:27017/ci-test"
+      AWS_ACCESS_KEY_ID: "dummy_access_key"
+      AWS_SECRET_ACCESS_KEY: "dummy_secret_key"
+      AWS_S3_BUCKET: "ci-dummy-bucket"
+      REDIS_HOST: "127.0.0.1"
+      REDIS_PORT: "6379"
+      NEXT_PUBLIC_API_URL: "http://localhost:3001"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all packages
+        run: npx turbo build
+
+      - name: Lint all packages
+        run: npx turbo lint
+
+      - name: Typecheck all packages
+        run: npx turbo check-types
