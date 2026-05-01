@@ -1,10 +1,10 @@
 import globals from "globals";
-import { config as baseConfig } from "./base.js";
+import baseConfig from "./base.js";
 
 /**
  * Specialized ESLint configuration for Node.js services.
  */
-export const nodeConfig = [
+export default [
   ...baseConfig,
   {
     languageOptions: {
