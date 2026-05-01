@@ -8,22 +8,22 @@
 
 // 1. Candidate Domain (Types & Schemas Only)
 export {
-  CandidateProfileSchema,
-  PersonalInfoSchema,
-  SkillSchema,
-  ExperienceSchema,
-  EducationSchema,
-  SkillCategoryEnum,
+    CandidateProfileSchema,
+    PersonalInfoSchema,
+    SkillSchema,
+    ExperienceSchema,
+    EducationSchema,
+    SkillCategoryEnum,
 } from './types/candidate';
 
 export type {
-  ICandidateProfile,
-  IPersonalInfo,
-  ISkill,
-  IExperience,
-  IEducation,
-  SkillCategory,
-  ICandidateDTO,
+    ICandidateProfile,
+    IPersonalInfo,
+    ISkill,
+    IExperience,
+    IEducation,
+    SkillCategory,
+    ICandidateDTO,
 } from './types/candidate';
 
 /**
@@ -35,13 +35,13 @@ export type { IJobPosting } from './models/JobPosting';
 
 // 2. Job & Task Domain (Types & Schemas Only)
 export {
-  JobStatus,
-  JobStatusSchema,
-  JobPostingSchema,
-  ResumeJobDataSchema,
+    JobStatus,
+    JobStatusSchema,
+    JobPostingSchema,
+    ResumeJobDataSchema,
 } from './types/job';
 
 export type {
-  JobPosting,
-  IResumeJobData,
+    JobPosting,
+    IResumeJobData,
 } from './types/job';

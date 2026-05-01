@@ -14,36 +14,36 @@ let listenersAttached = false;
  * for production monitoring.
  */
 export async function connectToDatabase(uri: string) {
-  if (mongoose.connection.readyState >= 1) {
-    return;
-  }
+    if (mongoose.connection.readyState >= 1) {
+        return;
+    }
 
-  if (!listenersAttached) {
-    const connection = mongoose.connection as any;
+    if (!listenersAttached) {
+        const connection = mongoose.connection as any;
 
-    connection.on('connected', () => {
-      console.info('[DB] Connected to MongoDB.');
-    });
+        connection.on('connected', () => {
+            console.info('[DB] Connected to MongoDB.');
+        });
 
-    connection.on('error', (err: any) => {
-      console.error('[DB:ERROR] Connection error:', err);
-    });
+        connection.on('error', (err: any) => {
+            console.error('[DB:ERROR] Connection error:', err);
+        });
 
-    connection.on('disconnected', () => {
-      console.warn('[DB:WARN] Disconnected. Reconnecting...');
-    });
+        connection.on('disconnected', () => {
+            console.warn('[DB:WARN] Disconnected. Reconnecting...');
+        });
 
-    listenersAttached = true;
-  }
+        listenersAttached = true;
+    }
 
-  try {
-    await mongoose.connect(uri, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    } as any);
-  } catch (error) {
-    console.error('[DB:FATAL] Initial connection failed:', error);
-    throw error;
-  }
+    try {
+        await mongoose.connect(uri, {
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+        } as any);
+    } catch (error) {
+        console.error('[DB:FATAL] Initial connection failed:', error);
+        throw error;
+    }
 }

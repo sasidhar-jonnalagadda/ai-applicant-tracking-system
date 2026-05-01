@@ -5,27 +5,27 @@ import { JobPosting } from '../types/job';
  * Interface representing a Job Posting in the database.
  */
 export interface IJobPosting extends Omit<JobPosting, 'id'>, Document {
-  createdAt: Date;
-  updatedAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
 }
 
 const JobPostingMongooseSchema: Schema = new Schema({
-  title: { 
-    type: String, 
-    required: true,
-    index: true 
-  },
-  description: { type: String, required: true },
-  department: { 
-    type: String, 
-    required: true,
-    index: true 
-  },
-  requirements: [{ type: String, required: true }]
-}, { 
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+    title: {
+        type: String,
+        required: true,
+        index: true
+    },
+    description: { type: String, required: true },
+    department: {
+        type: String,
+        required: true,
+        index: true
+    },
+    requirements: [{ type: String, required: true }]
+}, {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 });
 
 // Text index for basic job searching capability
