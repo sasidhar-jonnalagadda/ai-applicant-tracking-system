@@ -1,3 +1,3 @@
-import { nodeConfig } from "@repo/eslint-config/node";
+import nodeConfig from "@repo/eslint-config/node.js";
 
 export default nodeConfig;
