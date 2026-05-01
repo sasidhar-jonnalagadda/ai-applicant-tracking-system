@@ -32,7 +32,7 @@ async function startWorker() {
     // 2. Worker Instance Initialization
     // Concurrency=1 prevents Gemini rate limit saturation for a single replica.
     // [Q-3] limiter config provides cross-replica rate governance when scaling horizontally.
-    const worker = new Worker('resume-parsing', processResume, { 
+    const worker = new Worker('resume-parsing', processResume, {
       connection: redisConnection,
       concurrency: 1,
       limiter: {
@@ -69,7 +69,9 @@ async function startWorker() {
     let isShuttingDown = false;
 
     const shutdown = async () => {
-      if (isShuttingDown) return; // Prevent double-shutdown from rapid signals
+      if (isShuttingDown) {
+        return;
+      } // Prevent double-shutdown from rapid signals
       isShuttingDown = true;
 
       console.info('\n[WORKER] Graceful shutdown initiated...');
@@ -81,7 +83,7 @@ async function startWorker() {
       }, 15000);
       // Ensure the timer doesn't keep the process alive if shutdown completes
       forceExitTimer.unref();
-      
+
       try {
         // Stop accepting new jobs and wait for the current one to finish
         await worker.close();
