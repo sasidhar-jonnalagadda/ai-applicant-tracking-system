@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  UploadCloud, 
-  Search, 
-  CheckCircle, 
-  Clock, 
-  AlertCircle, 
-  Briefcase, 
-  User, 
-  Mail, 
+import {
+  UploadCloud,
+  Search,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Briefcase,
+  User,
+  Mail,
   ExternalLink,
   ChevronRight,
   ChevronDown,
@@ -39,7 +39,7 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [expandedCandidateIds, setExpandedCandidateIds] = useState<Set<string>>(new Set());
   const [isDelayed, setIsDelayed] = useState(false);
-  
+
   // Job Creation Modal State
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [isCreatingJob, setIsCreatingJob] = useState(false);
@@ -68,7 +68,7 @@ export default function Home() {
     try {
       const res = await axios.get<IJobPosting[]>(`${API_URL}/api/jobs`);
       setJobs(res.data);
-      
+
       const firstJob = res.data[0];
       if (firstJob && !selectedJobId) {
         setSelectedJobId(String(firstJob._id));
@@ -97,7 +97,7 @@ export default function Home() {
       };
 
       const res = await axios.post<IJobPosting>(`${API_URL}/api/jobs`, payload);
-      
+
       await loadJobs();
       setSelectedJobId(String(res.data._id));
       setIsJobModalOpen(false);
@@ -113,12 +113,16 @@ export default function Home() {
 
   // --- Logic: Delete Job Role ---
   const handleDeleteJob = async () => {
-    if (!selectedJobId) return;
+    if (!selectedJobId) {
+      return
+    };
 
     const jobTitle = jobs.find(j => String(j._id) === selectedJobId)?.title || 'this role';
     const confirmMessage = `Are you sure you want to delete "${jobTitle}"?\n\nThis will remove the job context and disconnect all associated candidate analysis. This action cannot be undone.`;
 
-    if (!window.confirm(confirmMessage)) return;
+    if (!window.confirm(confirmMessage)) {
+      return
+    };
 
     try {
       await axios.delete(`${API_URL}/api/jobs/${selectedJobId}`);
@@ -157,7 +161,7 @@ export default function Home() {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
     }
-    
+
     try {
       const formData = new FormData();
       formData.append('jobPostingId', selectedJobId);
@@ -191,14 +195,14 @@ export default function Home() {
 
         try {
           // Check all tasks concurrently
-          const taskPromises = taskIds.map(taskId => 
+          const taskPromises = taskIds.map(taskId =>
             axios.get<{ status: string; error?: string }>(`${API_URL}/api/jobs/tasks/${taskId}`)
           );
-          
+
           const taskResponses = await Promise.all(taskPromises);
           const allCompleted = taskResponses.every(res => res.data.status === JobStatus.COMPLETED);
           const anyFailed = taskResponses.find(res => res.data.status === JobStatus.FAILED);
-          
+
           if (anyFailed) {
             setUploadStatus('error');
             setErrorMessage(anyFailed.data.error || 'AI Processing failed for one or more resumes.');
@@ -271,7 +275,7 @@ export default function Home() {
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     const pdfFiles = files.filter(f => f.type === 'application/pdf');
-    
+
     if (pdfFiles.length > 0) {
       handleUpload(pdfFiles);
     } else {
@@ -283,7 +287,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-surface-50 text-surface-900 p-4 md:p-8 selection:bg-brand-100 animate-fade-in-up relative">
       <div className="max-w-6xl mx-auto space-y-10">
-        
+
         {/* --- Header Section --- */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-8 border-b border-surface-200">
           <div>
@@ -302,7 +306,7 @@ export default function Home() {
           <div className="w-full md:w-80 space-y-1.5">
             <div className="flex justify-between items-center px-1">
               <span className="text-xs font-bold text-surface-400 uppercase tracking-wider">Active Job Context</span>
-              <button 
+              <button
                 type="button"
                 onClick={() => setIsJobModalOpen(true)}
                 className="text-[10px] font-black text-brand-600 hover:text-brand-700 flex items-center gap-1 uppercase tracking-tighter cursor-pointer"
@@ -312,7 +316,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <select 
+                <select
                   value={selectedJobId}
                   onChange={(e) => setSelectedJobId(e.target.value)}
                   className="w-full bg-white border border-surface-200 rounded-xl px-4 py-3 appearance-none focus:ring-2 focus:ring-brand-500 outline-none shadow-sm font-semibold text-surface-700 disabled:opacity-50"
@@ -346,18 +350,17 @@ export default function Home() {
             <section className="glass p-6 rounded-3xl border border-white/40 shadow-xl space-y-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold flex items-center gap-2 text-surface-800">
-                  <UploadCloud className="text-brand-500" size={22}/> Ingest Candidate
+                  <UploadCloud className="text-brand-500" size={22} /> Ingest Candidate
                 </h2>
               </div>
 
               <div
                 role="button"
                 tabIndex={0}
-                className={`group border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 relative overflow-hidden ${
-                  isDragging 
-                    ? 'border-brand-500 bg-brand-50/50 scale-[0.98]' 
-                    : 'border-surface-200 hover:border-brand-400 hover:bg-brand-50/30'
-                }`}
+                className={`group border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 relative overflow-hidden ${isDragging
+                  ? 'border-brand-500 bg-brand-50/50 scale-[0.98]'
+                  : 'border-surface-200 hover:border-brand-400 hover:bg-brand-50/30'
+                  }`}
                 onClick={() => fileInputRef.current?.click()}
                 onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
                 onDragOver={handleDragOver}
@@ -378,9 +381,8 @@ export default function Home() {
                   }}
                 />
                 <div className="relative z-10 pointer-events-none">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform ${
-                    isDragging ? 'bg-brand-500 text-white scale-110' : 'bg-brand-50 text-brand-600 group-hover:scale-110'
-                  }`}>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform ${isDragging ? 'bg-brand-500 text-white scale-110' : 'bg-brand-50 text-brand-600 group-hover:scale-110'
+                    }`}>
                     <UploadCloud size={24} />
                   </div>
                   <p className="text-surface-700 font-bold">
@@ -391,14 +393,13 @@ export default function Home() {
               </div>
 
               {uploadStatus !== 'idle' && (
-                <div className={`flex items-center gap-4 p-4 rounded-2xl border transition-all animate-fade-in-up ${
-                  uploadStatus === 'error' ? 'bg-accent-error/10 border-accent-error/20' : 'bg-surface-50 border-surface-200'
-                }`}>
+                <div className={`flex items-center gap-4 p-4 rounded-2xl border transition-all animate-fade-in-up ${uploadStatus === 'error' ? 'bg-accent-error/10 border-accent-error/20' : 'bg-surface-50 border-surface-200'
+                  }`}>
                   <div className="flex-shrink-0">
-                    {uploadStatus === 'uploading' && <Clock className="animate-spin text-brand-500"/>}
+                    {uploadStatus === 'uploading' && <Clock className="animate-spin text-brand-500" />}
                     {uploadStatus === 'processing' && <div className="w-5 h-5 bg-brand-500 rounded-full animate-pulse" />}
-                    {uploadStatus === 'done' && <CheckCircle className="text-accent-success"/>}
-                    {uploadStatus === 'error' && <AlertCircle className="text-accent-error"/>}
+                    {uploadStatus === 'done' && <CheckCircle className="text-accent-success" />}
+                    {uploadStatus === 'error' && <AlertCircle className="text-accent-error" />}
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-bold text-surface-800 capitalize">
@@ -420,7 +421,7 @@ export default function Home() {
                   <div className="flex-1">
                     <p className="text-xs font-bold text-accent-warning uppercase tracking-widest leading-none mb-1">Busy Processing</p>
                     <p className="text-[11px] font-semibold text-accent-warning/80 leading-relaxed">
-                      Google's AI servers are experiencing high traffic. Your resumes are safely queued and will finish automatically. You can safely leave this page open.
+                      Google&apos;s AI servers are experiencing high traffic. Your resumes are safely queued and will finish automatically. You can safely leave this page open.
                     </p>
                   </div>
                 </div>
@@ -435,7 +436,7 @@ export default function Home() {
                   <p className="text-xs text-surface-400 font-bold">Matched Candidates</p>
                 </div>
                 <div className="h-10 w-24 bg-brand-500/20 rounded-lg relative overflow-hidden">
-                   <div className="absolute inset-0 bg-brand-500/40 animate-shimmer" style={{ width: '40%' }}></div>
+                  <div className="absolute inset-0 bg-brand-500/40 animate-shimmer" style={{ width: '40%' }}></div>
                 </div>
               </div>
             </div>
@@ -477,8 +478,8 @@ export default function Home() {
                 ))
               ) : (
                 candidates.map((candidate, index) => (
-                  <div 
-                    key={String(candidate._id)} 
+                  <div
+                    key={String(candidate._id)}
                     className="group bg-white p-8 rounded-3xl border border-surface-100 shadow-sm hover:shadow-xl hover:border-brand-100 transition-all duration-500 animate-fade-in-up"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
@@ -498,7 +499,7 @@ export default function Home() {
                           </div>
                         </div>
                       </div>
-                      
+
                       {candidate.score !== undefined && (
                         <div className="flex flex-col items-end">
                           <div className="bg-accent-success/10 text-accent-success px-4 py-1.5 rounded-full text-sm font-black border border-accent-success/20">
@@ -515,8 +516,8 @@ export default function Home() {
 
                     <div className="mt-6 pt-6 border-t border-surface-50 flex flex-wrap gap-2">
                       {candidate.skills.slice(0, 12).map((skill, idx) => (
-                        <span 
-                          key={idx} 
+                        <span
+                          key={idx}
                           className="bg-surface-50 text-surface-500 group-hover:bg-brand-50 group-hover:text-brand-600 border border-transparent group-hover:border-brand-100 px-3 py-1.5 rounded-xl text-xs font-black transition-all"
                         >
                           {skill.name}
@@ -525,8 +526,8 @@ export default function Home() {
                     </div>
 
                     <div className="mt-6 flex gap-4">
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => toggleExpandCandidate(String(candidate._id))}
                         className="flex-1 bg-brand-50 hover:bg-brand-100 text-brand-600 px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
                       >
@@ -619,13 +620,13 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-900/60 backdrop-blur-md animate-fade-in">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl border border-surface-100 relative overflow-hidden animate-scale-in">
             <div className="absolute top-0 left-0 w-full h-2 bg-brand-500" />
-            
+
             <div className="flex justify-between items-center mb-8">
               <div>
                 <h2 className="text-2xl font-black text-surface-900">Create New Role</h2>
                 <p className="text-sm font-medium text-surface-400">Define a new ingestion context</p>
               </div>
-              <button 
+              <button
                 onClick={() => setIsJobModalOpen(false)}
                 className="p-2 hover:bg-surface-50 rounded-full transition-colors text-surface-400 hover:text-surface-900"
               >
@@ -637,59 +638,59 @@ export default function Home() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-black text-surface-400 uppercase tracking-widest pl-1">Job Title</label>
-                  <input 
+                  <input
                     required
-                    type="text" 
+                    type="text"
                     placeholder="e.g. Frontend Lead"
                     className="w-full bg-surface-50 border border-surface-200 rounded-2xl px-4 py-3.5 focus:ring-2 focus:ring-brand-500 outline-none font-bold text-surface-800 transition-all placeholder:text-surface-300"
                     value={newJob.title}
-                    onChange={(e) => setNewJob({...newJob, title: e.target.value})}
+                    onChange={(e) => setNewJob({ ...newJob, title: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-black text-surface-400 uppercase tracking-widest pl-1">Department</label>
-                  <input 
+                  <input
                     required
-                    type="text" 
+                    type="text"
                     placeholder="e.g. Engineering"
                     className="w-full bg-surface-50 border border-surface-200 rounded-2xl px-4 py-3.5 focus:ring-2 focus:ring-brand-500 outline-none font-bold text-surface-800 transition-all placeholder:text-surface-300"
                     value={newJob.department}
-                    onChange={(e) => setNewJob({...newJob, department: e.target.value})}
+                    onChange={(e) => setNewJob({ ...newJob, department: e.target.value })}
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-surface-400 uppercase tracking-widest pl-1">Role Description</label>
-                <textarea 
+                <textarea
                   rows={3}
                   placeholder="Provide a brief overview of the mission..."
                   className="w-full bg-surface-50 border border-surface-200 rounded-2xl px-4 py-3.5 focus:ring-2 focus:ring-brand-500 outline-none font-bold text-surface-800 transition-all placeholder:text-surface-300 resize-none"
                   value={newJob.description}
-                  onChange={(e) => setNewJob({...newJob, description: e.target.value})}
+                  onChange={(e) => setNewJob({ ...newJob, description: e.target.value })}
                 />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-surface-400 uppercase tracking-widest pl-1">Key Requirements (Comma Separated)</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="React, TypeScript, GraphQL..."
                   className="w-full bg-surface-50 border border-surface-200 rounded-2xl px-4 py-3.5 focus:ring-2 focus:ring-brand-500 outline-none font-bold text-surface-800 transition-all placeholder:text-surface-300"
                   value={newJob.requirements}
-                  onChange={(e) => setNewJob({...newJob, requirements: e.target.value})}
+                  onChange={(e) => setNewJob({ ...newJob, requirements: e.target.value })}
                 />
               </div>
 
               <div className="pt-4 flex gap-4">
-                <button 
+                <button
                   type="button"
                   onClick={() => setIsJobModalOpen(false)}
                   className="flex-1 bg-surface-50 hover:bg-surface-100 text-surface-600 font-black py-4 rounded-2xl transition-all"
                 >
                   Cancel
                 </button>
-                <button 
+                <button
                   type="submit"
                   disabled={isCreatingJob}
                   className="flex-[2] bg-surface-900 hover:bg-black text-white font-black py-4 rounded-2xl shadow-xl transition-all disabled:opacity-50 active:scale-95"
