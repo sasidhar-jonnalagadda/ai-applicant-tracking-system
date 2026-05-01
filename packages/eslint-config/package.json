@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./base": "./base.js",
-    "./next-js": "./next.js",
-    "./node": "./node.js"
+    "./base.js": "./base.js",
+    "./next-js.js": "./next.js",
+    "./node.js": "./node.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
