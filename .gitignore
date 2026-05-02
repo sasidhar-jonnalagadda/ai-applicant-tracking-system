@@ -28,8 +28,6 @@ yarn-error.log*
 *.pem
 *.log
 
-packages/backend-api/uploads/
-
 # Prevent shared package build artifacts in src/ (B-1)
 packages/shared/src/**/*.js
 packages/shared/src/**/*.d.ts

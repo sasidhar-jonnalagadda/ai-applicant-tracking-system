@@ -43,3 +43,19 @@ jobs:
 
       - name: Typecheck all packages
         run: npx turbo check-types
+
+  docker-build:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Web Container
+        run: docker build -f apps/web/Dockerfile . -t ats-web:test --build-arg NEXT_PUBLIC_API_URL=http://localhost:3001
+
+      - name: Build API Container
+        run: docker build -f packages/backend-api/Dockerfile . -t ats-api:test
+
+      - name: Build Worker Container
+        run: docker build -f packages/worker/Dockerfile . -t ats-worker:test

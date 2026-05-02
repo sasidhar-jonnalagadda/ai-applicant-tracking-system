@@ -6,15 +6,27 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "db:index": "tsx scripts/create-vector-index.ts"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.39.1",
+    "mongodb": "^7.2.0",
     "prettier": "^3.2.5",
-    "turbo": "^2.8.17"
+    "tsx": "^4.21.0",
+    "turbo": "^2.8.17",
+    "typescript": "^5.4.5"
   },
   "packageManager": "npm@10.5.0",
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "next": "^16.2.4",
+    "postcss": "^8.5.10"
+  }
 }

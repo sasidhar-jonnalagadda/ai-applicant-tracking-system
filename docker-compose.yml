@@ -1,6 +1,6 @@
 services:
   mongodb:
-    image: mongo:latest
+    image: mongo:7.0
     container_name: ats_mongodb
     ports:
       - "27017:27017"
@@ -8,10 +8,10 @@ services:
       - mongodb_data:/data/db
 
   redis:
-    image: redis:alpine
+    image: redis:7.2-alpine
     container_name: ats_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
 volumes:
   mongodb_data:
