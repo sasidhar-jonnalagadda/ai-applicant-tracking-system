@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { logger } from '@repo/shared/logger';
 import { env } from './env';
 
 /**
@@ -15,13 +16,13 @@ export const redisConnection = new Redis(redisOptions);
 
 // Production monitoring listeners
 redisConnection.on('connect', () => {
-    console.info('[Redis] Connected successfully');
+    logger.info('[Redis] Connected successfully');
 });
 
 redisConnection.on('error', (err: Error) => {
-    console.error('[Redis] Connection error:', err);
+    logger.error({ err }, '[Redis] Connection error');
 });
 
 redisConnection.on('reconnecting', () => {
-    console.warn('[Redis] Attempting to reconnect...');
+    logger.warn('[Redis] Attempting to reconnect...');
 });

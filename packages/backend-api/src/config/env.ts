@@ -15,14 +15,14 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   
   // Infrastructure
-  MONGODB_URI: z.string().url(),
+  MONGODB_URI: z.string().min(1, "MongoDB URI is required"),
   
   // Redis (Queue Producer)
-  REDIS_HOST: z.string().default('127.0.0.1'),
+  REDIS_HOST: z.string().min(1, "Redis Host is required"),
   REDIS_PORT: z.coerce.number().default(6379),
   
-  // AWS (S3 Storage) — unified to AWS_S3_BUCKET across all packages [S-3]
-  AWS_REGION: z.string().default('us-east-1'),
+  // AWS (S3 Storage)
+  AWS_REGION: z.string().min(1, "AWS Region is required"),
   AWS_ACCESS_KEY_ID: z.string().min(1, "AWS Access Key is required"),
   AWS_SECRET_ACCESS_KEY: z.string().min(1, "AWS Secret Access Key is required"),
   AWS_S3_BUCKET: z.string().min(1, "S3 Bucket Name is required"),
@@ -30,8 +30,8 @@ const envSchema = z.object({
   // AI (Gemini)
   GEMINI_API_KEY: z.string().min(1, "Gemini API Key is required"),
 
-  // CORS [S-1] — required in production, defaults to wildcard in development
-  FRONTEND_URL: z.string().url().optional(),
+  // CORS [S-1] — strictly required in production
+  FRONTEND_URL: z.string().url(),
 });
 
 const _env = envSchema.safeParse(process.env);

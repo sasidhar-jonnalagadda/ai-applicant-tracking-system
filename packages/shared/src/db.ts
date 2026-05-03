@@ -1,17 +1,13 @@
 import mongoose from 'mongoose';
+import { logger } from './utils/logger';
 
 /**
  * Module-level guard to prevent event listener accumulation [D-5].
- * Without this, calling connectToDatabase() multiple times (e.g., in tests)
- * would register duplicate listeners on each call.
  */
 let listenersAttached = false;
 
 /**
  * Centralized Database Connection Utility.
- * 
- * Ensures a singleton connection and attaches standard error listeners
- * for production monitoring.
  */
 export async function connectToDatabase(uri: string) {
     if (mongoose.connection.readyState >= 1) {
@@ -19,18 +15,16 @@ export async function connectToDatabase(uri: string) {
     }
 
     if (!listenersAttached) {
-        const connection = mongoose.connection as any;
-
-        connection.on('connected', () => {
-            console.info('[DB] Connected to MongoDB.');
+        mongoose.connection.on('connected', () => {
+            logger.info('[DB] Connected to MongoDB');
         });
 
-        connection.on('error', (err: any) => {
-            console.error('[DB:ERROR] Connection error:', err);
+        mongoose.connection.on('error', (err: unknown) => {
+            logger.error({ err }, '[DB:ERROR] Connection error');
         });
 
-        connection.on('disconnected', () => {
-            console.warn('[DB:WARN] Disconnected. Reconnecting...');
+        mongoose.connection.on('disconnected', () => {
+            logger.warn('[DB:WARN] Disconnected from MongoDB');
         });
 
         listenersAttached = true;
@@ -41,9 +35,9 @@ export async function connectToDatabase(uri: string) {
             maxPoolSize: 10,
             serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
-        } as any);
+        });
     } catch (error) {
-        console.error('[DB:FATAL] Initial connection failed:', error);
+        logger.fatal({ err: error }, '[DB:FATAL] Initial connection failed');
         throw error;
     }
 }
