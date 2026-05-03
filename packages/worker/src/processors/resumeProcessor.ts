@@ -1,7 +1,7 @@
 import { Job, UnrecoverableError } from 'bullmq';
 import pdfParse from 'pdf-parse';
 import { GoogleGenerativeAI, SchemaType, Schema } from '@google/generative-ai';
-import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../config/s3';
 import { env } from '../config/env';
 import { IResumeJobData, CandidateProfileSchema, JobStatus } from '@repo/shared';
