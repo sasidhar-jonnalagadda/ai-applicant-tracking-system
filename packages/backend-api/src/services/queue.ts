@@ -1,5 +1,6 @@
 import { Queue, QueueOptions } from 'bullmq';
 import { IResumeJobData, ResumeJobDataSchema } from '@repo/shared';
+import { logger } from '@repo/shared/logger';
 import { redisConnection } from '../config/redis';
 
 /**
@@ -47,8 +48,9 @@ export const enqueueResumeJob = async (data: IResumeJobData): Promise<void> => {
 
     // 2. Queue Admission
     await resumeQueue.add('parse-resume', validatedData);
+    logger.info({ taskId: data.taskId }, '[QUEUE:SERVICE] Job enqueued');
   } catch (error) {
-    console.error(`[Queue Service] Failed to enqueue job for Task: ${data.taskId}`, error);
+    logger.error({ taskId: data.taskId, err: error }, '[QUEUE:SERVICE] Failed to enqueue job');
     
     // standardized domain error for API consumer
     throw new Error('QUEUE_ENQUEUE_FAILED');

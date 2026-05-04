@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logger } from '@repo/shared/logger';
 import { env } from '../config/env';
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
@@ -33,7 +34,7 @@ function delay(ms: number): Promise<void> {
 export const aiService = {
   /**
    * Generates a semantic vector embedding for a given text.
-   * Uses gemini-embedding-2.
+   * Uses gemini-embedding-001 (compressed to 768 dimensions).
    * 
    * Retries up to MAX_RETRIES times with exponential backoff on transient errors.
    * Aborts after REQUEST_TIMEOUT_MS per attempt.
@@ -43,7 +44,7 @@ export const aiService = {
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const model = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
+        const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
         // Create abort controller for timeout
         const controller = new AbortController();
@@ -51,8 +52,9 @@ export const aiService = {
 
         try {
           const result = await model.embedContent(text);
+
           clearTimeout(timeoutId);
-          return result.embedding.values;
+          return result.embedding.values.slice(0, 768);
         } catch (error) {
           clearTimeout(timeoutId);
           throw error;
@@ -62,14 +64,14 @@ export const aiService = {
         const errorMsg = lastError.message;
 
         // Only retry on transient errors (rate limits, server overload)
-        const isTransient = errorMsg.includes('429') || 
-                           errorMsg.includes('503') || 
-                           errorMsg.includes('overloaded') ||
-                           errorMsg.includes('DEADLINE_EXCEEDED');
+        const isTransient = errorMsg.includes('429') ||
+          errorMsg.includes('503') ||
+          errorMsg.includes('overloaded') ||
+          errorMsg.includes('DEADLINE_EXCEEDED');
 
         if (isTransient && attempt < MAX_RETRIES) {
           const backoffMs = BASE_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[AI Service] Transient error (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${backoffMs}ms...`);
+          logger.warn({ attempt: attempt + 1, backoffMs, err: errorMsg }, '[AI:SERVICE] Transient failure. Retrying...');
           await delay(backoffMs);
           continue;
         }
@@ -78,7 +80,7 @@ export const aiService = {
       }
     }
 
-    console.error('[AI Service] Embedding generation failed after all retries:', lastError);
+    logger.error({ err: lastError?.message }, '[AI:SERVICE] Embedding generation terminal failure');
     throw new Error('AI_EMBEDDING_FAILED');
   }
 };

@@ -6,6 +6,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import { connectToDatabase } from '@repo/shared/models';
+import { logger } from '@repo/shared/logger';
 import { env } from './config/env';
 import jobsRouter from './routes/jobs';
 import candidatesRouter from './routes/candidates';
@@ -14,15 +15,14 @@ import uploadRouter from './routes/upload';
 /**
  * Process-Level Safety Net
  * Prevents silent crashes from unhandled promise rejections.
- * Must be registered before any async work begins.
  */
 process.on('unhandledRejection', (reason: unknown) => {
-    console.error('[PROCESS:FATAL] Unhandled Rejection:', reason);
+    logger.fatal({ reason }, '[PROCESS:FATAL] Unhandled Rejection');
     process.exit(1);
 });
 
 process.on('uncaughtException', (error: Error) => {
-    console.error('[PROCESS:FATAL] Uncaught Exception:', error);
+    logger.fatal({ error }, '[PROCESS:FATAL] Uncaught Exception');
     process.exit(1);
 });
 
@@ -31,58 +31,56 @@ const port = env.PORT;
 
 /**
  * Global Security & Performance Middleware
+ * 
+ * [S-2] Configured Helmet for production-ready security headers.
  */
 app.set('trust proxy', 1); // Required for rate limiting behind load balancers
 app.use(helmet({
-    contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
-    crossOriginEmbedderPolicy: false, // Required for S3 file serving
+    contentSecurityPolicy: env.NODE_ENV === 'production' ? {
+        directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "img-src": ["'self'", "data:", "https:", "*.s3.amazonaws.com"],
+        },
+    } : false,
+    crossOriginEmbedderPolicy: false,
 }));
 
 /**
- * [S-1] CORS Configuration
- * 
- * Production: Restrict to FRONTEND_URL environment variable.
- * Development/Test: Allow all origins for local development.
+ * [S-1] Strict CORS Configuration
+ * Production: Strictly limited to FRONTEND_URL from environment.
  */
-const corsOptions: cors.CorsOptions = env.NODE_ENV === 'production' && env.FRONTEND_URL
-    ? {
-        origin: env.FRONTEND_URL,
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization'],
-        credentials: true,
-    }
-    : {};
+app.use(cors({
+    origin: env.FRONTEND_URL,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+}));
 
-app.use(cors(corsOptions));
-app.use(compression()); // Gzip compression for smaller payloads
-app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev')); // HTTP Request logging
+app.use(compression()); 
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+    stream: { write: (message) => logger.info(message.trim()) }
+}));
 app.use(express.json());
 
 /**
  * Differentiated Rate Limiting
- * 
- * Strict limiter: Protects mutation endpoints (upload, job creation, search).
- * Polling limiter: Relaxed limit for high-frequency task status checks.
- *   The frontend polls GET /api/jobs/tasks/:taskId every 3s per task.
- *   With 50 files, that's ~1000 req/min from a single IP.
  */
 const strictLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per window
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests, please try again later.' }
 });
 
 const pollingLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute window
-    max: 300,               // 300 req/min allows 50 tasks × 20 polls/min
+    windowMs: 1 * 60 * 1000,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Polling rate exceeded. Slow down status checks.' }
 });
 
-// Route-specific limiter MUST be registered before the catch-all
 app.use('/api/jobs/tasks', pollingLimiter);
 app.use('/api/', strictLimiter);
 
@@ -93,7 +91,6 @@ app.use('/api/upload', uploadRouter);
 
 /**
  * Enhanced Health Check
- * Returns current system readiness including DB connection status.
  */
 app.get('/health', (_req, res) => {
     const isDbConnected = mongoose.connection.readyState === 1;
@@ -101,21 +98,16 @@ app.get('/health', (_req, res) => {
         status: isDbConnected ? 'ok' : 'unhealthy',
         database: isDbConnected ? 'connected' : 'disconnected',
         timestamp: new Date().toISOString(),
-        env: env.NODE_ENV
     });
 });
 
 /**
  * Centralized Global Error Handler
- * 
- * Catches Zod validation errors, Mongoose errors, and generic exceptions.
- * Returns standardized JSON envelopes instead of crashing the Node process.
  */
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    // --- Zod Validation Errors (from schema.parse() in routes) ---
     if (err && typeof err === 'object' && 'issues' in err) {
         const zodErr = err as { issues: { path: (string | number)[]; message: string }[] };
-        console.error('[SERVER:VALIDATION]', JSON.stringify(zodErr.issues));
+        logger.warn({ zodErr: zodErr.issues }, '[SERVER:VALIDATION] Payload rejected');
         return res.status(400).json({
             error: 'Validation Error',
             details: zodErr.issues.map(i => ({
@@ -125,27 +117,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
         });
     }
 
-    // --- Mongoose Validation Errors ---
     if (err instanceof Error && err.name === 'ValidationError') {
-        console.error('[SERVER:DB_VALIDATION]', err.message);
+        logger.error({ error: err.message }, '[SERVER:DB_VALIDATION] Database constraint violation');
         return res.status(400).json({
             error: 'Database Validation Error',
             message: err.message
         });
     }
 
-    // --- Mongoose CastError (invalid ObjectId) ---
-    if (err instanceof Error && err.name === 'CastError') {
-        return res.status(400).json({
-            error: 'Invalid ID format',
-            message: 'The provided resource ID is malformed.'
-        });
-    }
-
-    // --- Generic Server Errors ---
     const message = err instanceof Error ? err.message : 'Unknown error';
     const stack = err instanceof Error ? err.stack : undefined;
-    console.error('[SERVER:ERROR]', message, env.NODE_ENV === 'development' ? stack : '');
+    logger.error({ err: { message, stack } }, '[SERVER:ERROR] Internal exception');
 
     return res.status(500).json({
         error: 'Internal Server Error',
@@ -159,38 +141,34 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 connectToDatabase(env.MONGODB_URI)
     .then(() => {
         const server = app.listen(port, () => {
-            console.info(`[BACKEND:API] Listening on port ${port} (${env.NODE_ENV} mode)`);
+            logger.info(`[BACKEND:API] Server listening on port ${port} in ${env.NODE_ENV} mode`);
         });
 
-        /**
-         * Graceful Shutdown Handler
-         */
-        const gracefulShutdown = async () => {
-            console.info('\n[SERVER] Graceful shutdown initiated...');
+        const gracefulShutdown = async (signal: string) => {
+            logger.info({ signal }, `[SERVER] ${signal} received. Initiating graceful shutdown...`);
 
             server.close(async () => {
-                console.info('[SERVER] HTTP server closed.');
+                logger.info('[SERVER] HTTP server closed.');
                 try {
                     await mongoose.connection.close();
-                    console.info('[SERVER] MongoDB connection closed.');
+                    logger.info('[SERVER] MongoDB connection closed.');
                     process.exit(0);
                 } catch (error) {
-                    console.error('[SERVER] Error during DB close:', error);
+                    logger.error({ error }, '[SERVER] Error during DB close');
                     process.exit(1);
                 }
             });
 
-            // Force close after 10 seconds
             setTimeout(() => {
-                console.error('[SERVER] Could not close connections in time, forcefully shutting down');
+                logger.fatal('[SERVER] Shutdown timed out. Forcefully exiting.');
                 process.exit(1);
-            }, 10000);
+            }, 10000).unref();
         };
 
-        process.on('SIGTERM', gracefulShutdown);
-        process.on('SIGINT', gracefulShutdown);
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+        process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     })
     .catch((err) => {
-        console.error('[SERVER:FATAL] Application failed to start:', err);
+        logger.fatal({ err }, '[SERVER:FATAL] Application failed to start');
         process.exit(1);
     });

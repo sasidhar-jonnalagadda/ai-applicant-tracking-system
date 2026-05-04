@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { JobPostingSchema } from '@repo/shared';
 import { JobPostingModel, Task } from '@repo/shared/models';
+import { logger } from '@repo/shared/logger';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -10,7 +11,6 @@ const router = Router();
  * Returns all active job postings for context selection.
  */
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {
-  // [T-3] Removed `as any` cast — model is now properly typed
   const jobs = await JobPostingModel.find().sort({ createdAt: -1 });
   return res.json(jobs);
 }));
@@ -21,9 +21,9 @@ router.get('/', asyncHandler(async (_req: Request, res: Response) => {
  */
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const validatedData = JobPostingSchema.parse(req.body);
-  // [T-3] Removed `as any` cast
   const job = new JobPostingModel(validatedData);
   await job.save();
+  logger.info({ jobId: job._id, title: job.title }, '[ROUTE:JOBS] New Job Posting created');
   return res.status(201).json(job);
 }));
 
@@ -33,10 +33,10 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
  */
 router.get('/tasks/:taskId', asyncHandler(async (req: Request, res: Response) => {
   const { taskId } = req.params;
-  // [T-3] Removed `as any` cast
   const task = await Task.findById(taskId);
   
   if (!task) {
+    logger.warn({ taskId }, '[ROUTE:JOBS] Task status poll failed: Not found');
     return res.status(404).json({ error: 'Task not found' });
   }
 
@@ -53,13 +53,14 @@ router.get('/tasks/:taskId', asyncHandler(async (req: Request, res: Response) =>
  */
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  // [T-3] Removed `as any` cast
   const job = await JobPostingModel.findByIdAndDelete(id);
   
   if (!job) {
+    logger.warn({ jobId: id }, '[ROUTE:JOBS] Delete failed: Not found');
     return res.status(404).json({ error: 'Job Posting not found' });
   }
 
+  logger.info({ jobId: id }, '[ROUTE:JOBS] Job Posting deleted');
   return res.json({ message: 'Job Posting deleted successfully' });
 }));
 

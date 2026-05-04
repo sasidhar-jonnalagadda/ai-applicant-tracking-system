@@ -1,22 +1,21 @@
 import { Worker } from 'bullmq';
 import mongoose from 'mongoose';
 import { connectToDatabase } from '@repo/shared/models';
+import { logger } from '@repo/shared/logger';
 import { redisConnection } from './config/redis';
 import { env } from './config/env';
 import { processResume } from './processors/resumeProcessor';
 
 /**
  * Process-Level Safety Net
- * Prevents silent crashes from unhandled promise rejections.
- * Must be registered before any async work begins.
  */
 process.on('unhandledRejection', (reason: unknown) => {
-  console.error('[PROCESS:FATAL] Unhandled Rejection:', reason);
+  logger.fatal({ reason }, '[PROCESS:FATAL] Unhandled Rejection');
   process.exit(1);
 });
 
 process.on('uncaughtException', (error: Error) => {
-  console.error('[PROCESS:FATAL] Uncaught Exception:', error);
+  logger.fatal({ error }, '[PROCESS:FATAL] Uncaught Exception');
   process.exit(1);
 });
 
@@ -27,91 +26,75 @@ async function startWorker() {
   try {
     // 1. Centralized Database Initialization
     await connectToDatabase(env.MONGODB_URI);
-    console.info(`[WORKER] Connected to MongoDB (${env.NODE_ENV})`);
+    logger.info(`[WORKER] Connected to MongoDB in ${env.NODE_ENV} mode`);
 
     // 2. Worker Instance Initialization
-    // Concurrency=1 prevents Gemini rate limit saturation for a single replica.
-    // [Q-3] limiter config provides cross-replica rate governance when scaling horizontally.
     const worker = new Worker('resume-parsing', processResume, {
       connection: redisConnection,
       concurrency: 1,
       limiter: {
         max: 1,
-        duration: 1000, // Max 1 job per second across all replicas sharing this queue
+        duration: 1000, 
       },
     });
 
     // 3. Operational Monitoring
     worker.on('completed', (job) => {
-      console.info(`[WORKER] Job Completed | ID: ${job.id} | Task: ${job.data.taskId}`);
+      logger.info({ jobId: job.id, taskId: job.data.taskId }, '[WORKER] Job Completed');
     });
 
     worker.on('failed', (job, err) => {
-      console.error(`[WORKER] Job Failed | ID: ${job?.id} | Error: ${err.message}`);
+      logger.error({ jobId: job?.id, taskId: job?.data?.taskId, err: err.message }, '[WORKER] Job Failed');
     });
 
     worker.on('error', (err) => {
-      console.error('[WORKER] Unexpected worker error:', err);
+      logger.error({ err: err.message }, '[WORKER] Unexpected worker error');
     });
 
-    console.info(`[WORKER] Listening for jobs on queue: resume-parsing...`);
+    logger.info('[WORKER] Listening for jobs on queue: resume-parsing...');
 
     /**
      * [Q-2] Unified Graceful Shutdown Handler
-     * 
-     * Merges the shutdown and force-exit into a single signal handler.
-     * The previous implementation registered TWO handlers for each signal,
-     * causing the force-exit timer to race with the graceful path.
-     * 
-     * [Q-1] Properly closes both BullMQ's internal connection AND
-     * the explicit shared Redis connection.
      */
     let isShuttingDown = false;
 
-    const shutdown = async () => {
+    const shutdown = async (signal: string) => {
       if (isShuttingDown) {
         return;
-      } // Prevent double-shutdown from rapid signals
+      }
       isShuttingDown = true;
 
-      console.info('\n[WORKER] Graceful shutdown initiated...');
+      logger.info({ signal }, `[WORKER] ${signal} received. Graceful shutdown initiated...`);
 
-      // Start force-exit timer INSIDE the handler, not as a separate handler
-      const forceExitTimer = setTimeout(() => {
-        console.error('[WORKER] Forced shutdown after 15s timeout.');
+      setTimeout(() => {
+        logger.fatal('[WORKER] Forced shutdown after 15s timeout.');
         process.exit(1);
-      }, 15000);
-      // Ensure the timer doesn't keep the process alive if shutdown completes
-      forceExitTimer.unref();
+      }, 15000).unref();
 
       try {
-        // Stop accepting new jobs and wait for the current one to finish
         await worker.close();
-        console.info('[WORKER] BullMQ worker closed.');
+        logger.info('[WORKER] BullMQ worker closed.');
 
-        // [Q-1] Close the explicit Redis connection (not closed by worker.close())
         await redisConnection.quit();
-        console.info('[WORKER] Redis connection closed.');
+        logger.info('[WORKER] Redis connection closed.');
 
-        // Close database connection
         await mongoose.connection.close();
-        console.info('[WORKER] MongoDB connection closed.');
+        logger.info('[WORKER] MongoDB connection closed.');
 
         process.exit(0);
       } catch (error) {
-        console.error('[WORKER] Error during graceful shutdown:', error);
+        logger.error({ error }, '[WORKER] Error during graceful shutdown');
         process.exit(1);
       }
     };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 
   } catch (error) {
-    console.error('[WORKER:FATAL] Worker failed to start:', error);
+    logger.fatal({ error }, '[WORKER:FATAL] Worker failed to start');
     process.exit(1);
   }
 }
 
-// Start the worker process
 startWorker();

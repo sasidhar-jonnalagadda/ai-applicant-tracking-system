@@ -1,12 +1,12 @@
 import { Job, UnrecoverableError } from 'bullmq';
 import pdfParse from 'pdf-parse';
-import fs from 'fs';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, Schema } from '@google/generative-ai';
 import { GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, BUCKET_NAME } from '../config/s3';
 import { env } from '../config/env';
 import { IResumeJobData, CandidateProfileSchema, JobStatus } from '@repo/shared';
 import { Task, Candidate, JobPostingModel } from '@repo/shared/models';
+import { logger } from '@repo/shared/logger';
 import { Readable } from 'stream';
 
 // Initialize AI Client with validated environment
@@ -15,7 +15,7 @@ const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 /**
  * Strict Schema Definition for Gemini Structured Output
  */
-const candidateSchemaDefinition = {
+const candidateSchemaDefinition: Schema = {
   type: SchemaType.OBJECT,
   properties: {
     personalInfo: {
@@ -87,40 +87,33 @@ const candidateSchemaDefinition = {
 
 /**
  * Memory-Safe S3 Stream Consumer
- * [T-5] Properly typed chunk as Uint8Array instead of `as any`.
  */
 async function consumeStreamToBuffer(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
     chunks.push(Buffer.from(chunk as Uint8Array));
   }
-  return Buffer.concat(chunks);
+  return Buffer.concat(chunks as Uint8Array[]);
 }
 
 /**
  * Determines if an error is transient (should be retried by BullMQ)
- * vs permanent (should immediately fail with no retries).
  */
 function isTransientError(errorMessage: string): boolean {
-  return errorMessage.includes('429') || 
-         errorMessage.includes('503') ||
-         errorMessage.includes('overloaded') ||
-         errorMessage.includes('ECONNRESET') ||
-         errorMessage.includes('DEADLINE_EXCEEDED');
+  return errorMessage.includes('429') ||
+    errorMessage.includes('503') ||
+    errorMessage.includes('overloaded') ||
+    errorMessage.includes('ECONNRESET') ||
+    errorMessage.includes('DEADLINE_EXCEEDED');
 }
 
 /**
  * BullMQ Worker Processor: Resume Parsing & Ingestion Logic
- *
- * [E-1] Uses UnrecoverableError for non-transient failures to prevent wasteful retries.
- * [E-2] S3 cleanup only runs on successful completion, not in finally block.
- * [E-4] JSON.parse is wrapped in try/catch with descriptive error.
- * [T-3] Removed all `as any` casts on model operations.
  */
 export const processResume = async (job: Job<IResumeJobData>) => {
   const { taskId, s3Key, s3Bucket, jobPostingId } = job.data;
 
-  console.info(`[WORKER:PROCESSOR] Starting processing | Task: ${taskId} | Job: ${job.id}`);
+  logger.info({ taskId, jobId: job.id, s3Key }, '[WORKER:PROCESSOR] Starting processing');
 
   try {
     // 1. Atomic State Transition: PROCESSING
@@ -128,29 +121,21 @@ export const processResume = async (job: Job<IResumeJobData>) => {
     if (!task) {
       throw new UnrecoverableError('TASK_NOT_FOUND');
     }
-    
+
     task.status = JobStatus.PROCESSING;
     await task.save();
 
-    // 2. Multi-Source Ingestion (Local Fallback Support)
-    let pdfBuffer: Buffer;
-    const isLocal = s3Bucket === 'LOCAL_STORAGE' || fs.existsSync(s3Key);
+    // 2. S3 Ingestion
+    logger.info({ s3Key, bucket: s3Bucket || BUCKET_NAME }, '[WORKER:INGESTION] Fetching file from S3');
+    const getObjectResult = await s3Client.send(new GetObjectCommand({
+      Bucket: s3Bucket || BUCKET_NAME,
+      Key: s3Key,
+    }));
 
-    if (isLocal) {
-      console.info(`[WORKER:INGESTION] Reading file from local storage: ${s3Key}`);
-      pdfBuffer = await fs.promises.readFile(s3Key);
-    } else {
-      console.info(`[WORKER:INGESTION] Fetching file from S3: ${s3Key}`);
-      const getObjectResult = await s3Client.send(new GetObjectCommand({
-        Bucket: s3Bucket || BUCKET_NAME,
-        Key: s3Key,
-      }));
-
-      if (!getObjectResult.Body) {
-        throw new UnrecoverableError('S3_EMPTY_BODY');
-      }
-      pdfBuffer = await consumeStreamToBuffer(getObjectResult.Body as Readable);
+    if (!getObjectResult.Body) {
+      throw new UnrecoverableError('S3_EMPTY_BODY');
     }
+    const pdfBuffer = await consumeStreamToBuffer(getObjectResult.Body as Readable);
 
     // 3. Unstructured Data Extraction
     const pdfData = await pdfParse(pdfBuffer);
@@ -166,12 +151,12 @@ export const processResume = async (job: Job<IResumeJobData>) => {
       throw new UnrecoverableError('JOB_POSTING_NOT_FOUND');
     }
 
-    // 4. AI-Powered Structured Parsing (High-Throughput: gemini-2.5-flash)
+    // 4. AI-Powered Structured Parsing (High-Throughput: gemini-3-flash)
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: candidateSchemaDefinition as Parameters<typeof genAI.getGenerativeModel>[0] extends { generationConfig?: { responseSchema?: infer S } } ? S : never,
+        responseSchema: candidateSchemaDefinition,
       }
     });
 
@@ -203,24 +188,24 @@ Instructions:
       rawCandidateData = JSON.parse(result.response.text());
     } catch (parseError) {
       const parseMsg = parseError instanceof Error ? parseError.message : 'Unknown parse error';
-      console.error(`[WORKER:PARSE_ERROR] Gemini returned invalid JSON for Task ${taskId}:`, parseMsg);
+      logger.error({ taskId, parseMsg }, '[WORKER:PARSE_ERROR] Gemini returned invalid JSON');
       throw new UnrecoverableError(`AI_RESPONSE_PARSE_FAILED: ${parseMsg}`);
     }
 
     // 5. THE INGESTION SHIELD: Production-Grade Zod Validation
     const validatedCandidateData = CandidateProfileSchema.parse(rawCandidateData);
 
-    // 6. Semantic Vector Generation (Pro-Grade: gemini-embedding-2)
-    const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
+    // 6. Semantic Vector Generation (gemini-embedding-001, 768 dimensions native)
+    const embeddingModel = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
     const textToEmbed = `${validatedCandidateData.summary} Skills: ${validatedCandidateData.skills.map((s) => s.name).join(', ')}`;
     const embeddingResult = await embeddingModel.embedContent(textToEmbed);
 
     // 7. Database Persistence
     const candidate = new Candidate({
       jobPostingId,
-      resumeUrl: isLocal ? `local://${s3Key}` : `s3://${s3Bucket || BUCKET_NAME}/${s3Key}`,
+      resumeUrl: `https://${s3Bucket || BUCKET_NAME}.s3.amazonaws.com/${s3Key}`,
       ...validatedCandidateData,
-      embedding: embeddingResult.embedding.values,
+      embedding: embeddingResult.embedding.values.slice(0, 768),
     });
 
     await candidate.save();
@@ -230,58 +215,49 @@ Instructions:
     task.candidateId = candidate._id;
     await task.save();
 
-    // 9. [E-2] Cleanup ONLY on successful completion — NOT in finally block.
-    // This prevents deleting the source file before a retry attempt.
-    try {
-      if (s3Bucket !== 'LOCAL_STORAGE' && !fs.existsSync(s3Key)) {
-        await s3Client.send(new DeleteObjectCommand({
-          Bucket: s3Bucket || BUCKET_NAME,
-          Key: s3Key,
-        }));
-        console.info(`[WORKER:CLEANUP] Successfully removed S3 object: ${s3Key}`);
-      } else {
-        console.info(`[WORKER:CLEANUP] Skipping cleanup for local storage: ${s3Key}`);
-      }
+    // 9. Cleanup ONLY on successful completion
+    /*try {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: s3Bucket || BUCKET_NAME,
+        Key: s3Key,
+      }));
+      logger.info({ s3Key }, '[WORKER:CLEANUP] Successfully removed S3 object');
     } catch (cleanupError) {
       const cleanupMsg = cleanupError instanceof Error ? cleanupError.message : 'Unknown cleanup error';
-      console.error(`[WORKER:CLEANUP_ERROR] Failed to delete file ${s3Key}:`, cleanupMsg);
-      // Don't fail the job for cleanup errors — the candidate is already saved
+      logger.error({ s3Key, err: cleanupMsg }, '[WORKER:CLEANUP_ERROR] Failed to delete source file');
     }
+    */
 
     return { candidateId: String(candidate._id) };
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[WORKER:ERROR] Job ${job.id} failed:`, errorMessage);
+    logger.error({ jobId: job.id, taskId, err: errorMessage }, '[WORKER:ERROR] Job processing failed');
 
-    // [E-1] If it's already an UnrecoverableError, BullMQ won't retry it.
-    // If it's a transient error, re-throw to trigger exponential backoff retry.
     if (error instanceof UnrecoverableError) {
-      // Mark task as FAILED in DB before BullMQ receives the unrecoverable signal
       try {
-        await Task.findByIdAndUpdate(taskId, { 
-          status: 'FAILED', 
-          error: errorMessage 
+        await Task.findByIdAndUpdate(taskId, {
+          status: 'FAILED',
+          error: errorMessage
         });
       } catch (dbError) {
-        console.error('[WORKER:DB_ERROR] Failed to update task status to FAILED:', dbError);
+        logger.error({ taskId, dbError }, '[WORKER:DB_ERROR] Failed to update task status to FAILED');
       }
-      throw error; // BullMQ will NOT retry this
+      throw error;
     }
 
     if (isTransientError(errorMessage)) {
-      console.warn(`[WORKER:RETRY] Transient failure detected. Triggering exponential backoff for Job ${job.id}`);
-      throw error; // BullMQ WILL retry this with backoff
+      logger.warn({ jobId: job.id, err: errorMessage }, '[WORKER:RETRY] Transient failure detected. Re-enqueuing with backoff');
+      throw error;
     }
 
-    // Unknown errors — mark as failed and don't retry
     try {
-      await Task.findByIdAndUpdate(taskId, { 
-        status: 'FAILED', 
-        error: errorMessage 
+      await Task.findByIdAndUpdate(taskId, {
+        status: 'FAILED',
+        error: errorMessage
       });
     } catch (dbError) {
-      console.error('[WORKER:DB_ERROR] Failed to update task status to FAILED:', dbError);
+      logger.error({ taskId, dbError }, '[WORKER:DB_ERROR] Failed to update task status to FAILED');
     }
 
     throw new UnrecoverableError(errorMessage);

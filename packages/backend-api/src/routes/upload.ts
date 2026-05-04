@@ -2,49 +2,29 @@ import { Router, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import multerS3 from 'multer-s3';
 import mongoose from 'mongoose';
-import fs from 'fs';
-import path from 'path';
 import { s3Client, BUCKET_NAME } from '../config/s3';
-import { env } from '../config/env';
 import { IResumeJobData } from '@repo/shared';
 import { Task, JobPostingModel } from '@repo/shared/models';
+import { logger } from '@repo/shared/logger';
 import { enqueueResumeJob } from '../services/queue';
 
 const router = Router();
 
-// Ensure local uploads directory exists for fallback
-const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
 /**
- * Conditional Storage Strategy:
- * Use Local Disk if AWS credentials are 'dummy_access_key', otherwise use S3.
+ * Production Storage Strategy:
+ * Strictly use AWS S3 for all resume uploads. Local fallback is disabled.
  */
-const isDummyS3 = env.AWS_ACCESS_KEY_ID === 'dummy_access_key';
-
-const storage = isDummyS3 
-  ? multer.diskStorage({
-      destination: (_req, _file, cb) => {
-        cb(null, UPLOADS_DIR);
-      },
-      filename: (_req, file, cb) => {
-        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-        cb(null, `${uniqueSuffix}-${file.originalname}`);
-      }
-    })
-  : multerS3({
-      s3: s3Client,
-      bucket: BUCKET_NAME,
-      metadata: (_req, file, cb) => {
-        cb(null, { fieldName: file.fieldname });
-      },
-      key: (_req, file, cb) => {
-        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-        cb(null, `resumes/${uniqueSuffix}-${file.originalname}`);
-      }
-    });
+const storage = multerS3({
+  s3: s3Client,
+  bucket: BUCKET_NAME,
+  metadata: (_req, file, cb) => {
+    cb(null, { fieldName: file.fieldname });
+  },
+  key: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `resumes/${uniqueSuffix}-${file.originalname}`);
+  }
+});
 
 const upload = multer({
   storage,
@@ -66,6 +46,7 @@ router.post('/', (req: Request, res: Response) => {
   upload(req, res, async (err: unknown) => {
     if (err) {
       if (err instanceof MulterError) {
+        logger.warn({ errCode: err.code, message: err.message }, '[ROUTE:UPLOAD] Multer rejection');
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(413).json({ error: 'File too large. Maximum size is 5MB.' });
         }
@@ -79,12 +60,14 @@ router.post('/', (req: Request, res: Response) => {
         if (err.message === 'INVALID_FILE_TYPE') {
           return res.status(415).json({ error: 'Only PDF files are allowed.' });
         }
-        return res.status(400).json({ error: err.message });
+        // Gracefully catch S3-related connection or permission errors
+        logger.error({ err: err.message }, '[ROUTE:UPLOAD] S3 Storage Failure');
+        return res.status(500).json({ error: 'Storage service unavailable. Please check AWS configuration.' });
       }
       return res.status(400).json({ error: 'Unknown upload error.' });
     }
 
-    const files = req.files as Express.Multer.File[] | Express.MulterS3.File[];
+    const files = req.files as Express.MulterS3.File[];
     const { jobPostingId } = req.body as { jobPostingId?: string };
 
     if (!files || files.length === 0) {
@@ -96,39 +79,26 @@ router.post('/', (req: Request, res: Response) => {
     }
 
     try {
-      // [T-3] Removed `as any` — models are now properly typed
       const jobExists = await JobPostingModel.exists({ _id: jobPostingId });
       if (!jobExists) {
+        logger.warn({ jobPostingId }, '[ROUTE:UPLOAD] Upload failed: Job Posting not found');
         return res.status(404).json({ error: 'The specified Job Posting does not exist.' });
       }
 
       const taskIds: string[] = [];
-      const isLocal = files.length > 0 && 'path' in files[0]!;
 
       for (const file of files) {
-        // [S-2] Normalize file information — use relative paths for local storage
-        // to avoid exposing full filesystem paths in the database
-        const localFile = file as Express.Multer.File;
-        const s3File = file as Express.MulterS3.File;
-        
-        const fileIdentifier = isLocal 
-          ? path.relative(process.cwd(), localFile.path) 
-          : s3File.key;
-        const fileUrl = isLocal 
-          ? `local://${path.relative(process.cwd(), localFile.path)}` 
-          : s3File.location;
-
         const task = new Task({
           jobPostingId,
-          fileUrl,
+          fileUrl: file.location,
           status: 'PENDING'
         });
         await task.save();
 
         const jobData: IResumeJobData = {
           taskId: String(task._id),
-          s3Key: isLocal ? localFile.path : fileIdentifier, // Worker needs absolute path for local reads
-          s3Bucket: !isLocal ? (s3File.bucket || BUCKET_NAME) : 'LOCAL_STORAGE',
+          s3Key: file.key,
+          s3Bucket: file.bucket || BUCKET_NAME,
           jobPostingId
         };
 
@@ -136,14 +106,15 @@ router.post('/', (req: Request, res: Response) => {
         taskIds.push(String(task._id));
       }
 
+      logger.info({ jobPostingId, fileCount: files.length }, '[ROUTE:UPLOAD] Resumes accepted for processing');
       return res.status(202).json({
-        message: isLocal ? `Accepted ${files.length} resumes for local processing.` : `Accepted ${files.length} resumes for cloud processing.`,
+        message: `Accepted ${files.length} resumes for cloud processing.`,
         taskIds
       });
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[ROUTE:UPLOAD] Processing failure:', errorMessage);
+      logger.error({ err: errorMessage, jobPostingId }, '[ROUTE:UPLOAD] Task initialization failure');
       return res.status(500).json({ error: 'Failed to initialize ingestion task(s).' });
     }
   });
