@@ -114,15 +114,15 @@ export default function Home() {
   // --- Logic: Delete Job Role ---
   const handleDeleteJob = async () => {
     if (!selectedJobId) {
-      return
-    };
+      return;
+    }
 
     const jobTitle = jobs.find(j => String(j._id) === selectedJobId)?.title || 'this role';
     const confirmMessage = `Are you sure you want to delete "${jobTitle}"?\n\nThis will remove the job context and disconnect all associated candidate analysis. This action cannot be undone.`;
 
     if (!window.confirm(confirmMessage)) {
-      return
-    };
+      return;
+    }
 
     try {
       await axios.delete(`${API_URL}/api/jobs/${selectedJobId}`);
@@ -403,7 +403,7 @@ export default function Home() {
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-bold text-surface-800 capitalize">
-                      {uploadStatus === 'processing' ? `Analyzing ${uploadCount} resume${uploadCount > 1 ? 's' : ''} via Gemini 2.5 Flash` : uploadStatus}
+                      {uploadStatus === 'processing' ? `Analyzing ${uploadCount} resume${uploadCount > 1 ? 's' : ''} via Gemini 3 Flash` : uploadStatus}
                     </p>
                     <p className="text-xs text-surface-400 font-medium">
                       {uploadStatus === 'error' ? (errorMessage || 'Check job context') : (uploadStatus === 'processing' ? 'Extracting structured data in parallel...' : 'System status updated')}
@@ -537,9 +537,14 @@ export default function Home() {
                           <>Expand Analysis <ChevronDown size={16} /></>
                         )}
                       </button>
-                      <button type="button" className="flex-1 bg-surface-50 hover:bg-surface-100 text-surface-600 px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2">
+                      <a
+                        href={candidate.resumeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 bg-surface-50 hover:bg-surface-100 text-surface-600 px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
+                      >
                         View Resume <ExternalLink size={16} />
-                      </button>
+                      </a>
                     </div>
 
                     {/* --- Explainable AI Match Breakdown --- */}
