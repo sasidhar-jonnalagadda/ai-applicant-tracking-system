@@ -11,6 +11,7 @@ import { redisConnection } from '../config/redis';
  */
 const RESUME_QUEUE_OPTIONS: QueueOptions = {
   connection: redisConnection,
+  prefix: 'ats-project',
   defaultJobOptions: {
     // Retry strategy for transient failures (S3 blips, AI rate limits)
     attempts: 5,

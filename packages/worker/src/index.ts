@@ -31,6 +31,7 @@ async function startWorker() {
     // 2. Worker Instance Initialization
     const worker = new Worker('resume-parsing', processResume, {
       connection: redisConnection,
+      prefix: 'ats-project',
       concurrency: 1,
       limiter: {
         max: 1,
