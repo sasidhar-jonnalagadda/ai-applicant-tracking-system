@@ -6,13 +6,9 @@ import { env } from './env';
  * Shared Redis connection for BullMQ.
  * maxRetriesPerRequest must be null for compatibility with BullMQ.
  */
-const redisOptions = {
-    host: env.REDIS_HOST,
-    port: env.REDIS_PORT,
+export const redisConnection = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
-};
-
-export const redisConnection = new Redis(redisOptions);
+});
 
 // Production monitoring listeners
 redisConnection.on('connect', () => {
