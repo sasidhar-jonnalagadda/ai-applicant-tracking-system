@@ -18,8 +18,7 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1, "MongoDB URI is required"),
   
   // Redis (Queue Producer)
-  REDIS_HOST: z.string().min(1, "Redis Host is required"),
-  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_URL: z.string().url(),
   
   // AWS (S3 Storage)
   AWS_REGION: z.string().min(1, "AWS Region is required"),
