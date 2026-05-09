@@ -3,10 +3,10 @@
     "version": "1.0.0",
     "private": true,
     "exports": {
-        ".": "./src/index.ts",
-        "./db": "./src/db.ts",
-        "./models": "./src/models/index.ts",
-        "./logger": "./src/utils/logger.ts"
+        ".": "./dist/index.js",
+        "./db": "./dist/db.js",
+        "./models": "./dist/models/index.js",
+        "./logger": "./dist/utils/logger.js"
     },
     "scripts": {
         "build": "tsc",
