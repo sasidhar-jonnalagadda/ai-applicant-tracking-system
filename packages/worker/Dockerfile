@@ -24,14 +24,13 @@ RUN npx turbo build --filter=worker...
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# Don't run production as root
 RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 bullmq
-USER bullmq
+RUN adduser --system --uid 1001 expressjs
+USER expressjs
 
-COPY --from=builder /app/packages/worker/package.json .
-COPY --from=builder /app/packages/worker/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+# Copy the fully built, pruned monorepo structure
+COPY --from=builder /app .
 
-CMD ["node", "dist/index.js"]
+# Run from its proper monorepo location
+CMD ["node", "packages/worker/dist/index.js"]

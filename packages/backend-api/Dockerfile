@@ -31,14 +31,10 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 expressjs
 USER expressjs
 
-COPY --from=builder /app/packages/backend-api/package.json .
-COPY --from=builder /app/packages/backend-api/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+# Copy the fully built, pruned monorepo structure
+COPY --from=builder /app .
 
-# Environment variables should be injected at runtime, 
-# but we expose the port for documentation.
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+# Run from its proper monorepo location
+CMD ["node", "packages/backend-api/dist/index.js"]
