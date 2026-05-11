@@ -46,11 +46,15 @@ app.use(helmet({
 }));
 
 /**
- * [S-1] Strict CORS Configuration
- * Production: Strictly limited to FRONTEND_URL from environment.
+ * [S-1] Bulletproof CORS Configuration
+ * Allows the environment variable, local development, and a hardcoded failsafe.
  */
 app.use(cors({
-    origin: env.FRONTEND_URL,
+    origin: [
+        env.FRONTEND_URL,
+        'http://localhost:3000',
+        'https://ai-applicant-tracking-system-web.vercel.app'
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
