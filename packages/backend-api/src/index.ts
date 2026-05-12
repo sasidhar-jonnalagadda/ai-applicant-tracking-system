@@ -144,9 +144,9 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
  */
 connectToDatabase(env.MONGODB_URI)
     .then(() => {
-        const server = app.listen(port, () => {
-            logger.info(`[BACKEND:API] Server listening on port ${port} in ${env.NODE_ENV} mode`);
-        });
+        const server = app.listen(port as number, '0.0.0.0', () => {
+    logger.info(`[BACKEND:API] Server listening on port ${port} in ${env.NODE_ENV} mode at 0.0.0.0`);
+});
 
         const gracefulShutdown = async (signal: string) => {
             logger.info({ signal }, `[SERVER] ${signal} received. Initiating graceful shutdown...`);
