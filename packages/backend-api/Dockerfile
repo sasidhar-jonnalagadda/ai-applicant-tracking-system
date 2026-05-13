@@ -34,7 +34,7 @@ USER expressjs
 # Copy the fully built, pruned monorepo structure
 COPY --from=builder /app .
 
-EXPOSE 3001
+# EXPOSE 3001
 
 # Run from its proper monorepo location
 CMD ["node", "packages/backend-api/dist/index.js"]
