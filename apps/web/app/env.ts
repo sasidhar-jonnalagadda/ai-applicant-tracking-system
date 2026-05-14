@@ -22,7 +22,7 @@ if (typeof window === 'undefined') {
 }
 
 const envSchema = z.object({
-  NEXT_PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
+  NEXT_PUBLIC_API_URL: z.string().min(1).default('http://localhost:3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
