@@ -15,6 +15,15 @@ const nextConfig = {
     ],
   },
 
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'https://web-production-6d81a.up.railway.app/api/:path*',
+      },
+    ];
+  },
+
   // Security Headers for Production
   async headers() {
     return [
