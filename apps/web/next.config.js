@@ -19,7 +19,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://backend-api-production-bdcc.up.railway.app/api/:path*',
+        destination: 'https://ai-applicant-tracking-system.onrender.com/api/:path*',
       },
     ];
   },
