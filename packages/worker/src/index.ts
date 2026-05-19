@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq';
 import mongoose from 'mongoose';
+import * as http from 'http';
 import { connectToDatabase } from '@repo/shared/models';
 import { logger } from '@repo/shared/logger';
 import { redisConnection } from './config/redis';
@@ -24,6 +25,16 @@ process.on('uncaughtException', (error: Error) => {
  */
 async function startWorker() {
   try {
+    // --- [RENDER FIX 2] Add the Health Check Heartbeat ---
+    const port = Number(process.env.PORT) || 10000;
+    http.createServer((_req, res) => {
+      res.writeHead(200);
+      res.end('Worker is alive and processing');
+    }).listen({ port: port, host: '0.0.0.0' }, () => {
+      logger.info(`[WORKER:HEALTH] Render Heartbeat Server running on port ${port}`);
+    });
+    // -----------------------------------------------------
+
     // 1. Centralized Database Initialization
     await connectToDatabase(env.MONGODB_URI);
     logger.info(`[WORKER] Connected to MongoDB in ${env.NODE_ENV} mode`);
@@ -35,7 +46,7 @@ async function startWorker() {
       concurrency: 1,
       limiter: {
         max: 1,
-        duration: 1000, 
+        duration: 1000,
       },
     });
 
