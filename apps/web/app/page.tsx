@@ -63,6 +63,18 @@ export default function Home() {
     };
   }, []);
 
+  // Silently wake up the Render Worker the moment the page loads
+  useEffect(() => {
+    const workerUrl = 'https://ats-worker-7uny.onrender.com'; 
+    
+    // We use 'no-cors' so the browser fires the request but ignores the lack of CORS headers.
+    fetch(workerUrl, { mode: 'no-cors' })
+      .catch(() => {
+        // We don't care about the response or errors. The network tap alone wakes the server!
+      });
+  }, []);
+  // -----------------------
+
   // --- Initial Data Fetching ---
   const loadJobs = useCallback(async () => {
     try {
